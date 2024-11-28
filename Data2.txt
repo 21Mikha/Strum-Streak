@@ -1,0 +1,233 @@
+using OpenTK;
+using OpenTK.Graphics;
+using OpenTK.Graphics.OpenGL;
+using OpenTK.Input;
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+
+namespace OpenTK3_CLI_template
+{
+    internal class Window3D : GameWindow
+    {
+        private Color backgroundColor = Color.FromArgb(49, 50, 51);
+        private Pyramid pyramid;
+        private bool isPyramidVisible = true;
+        private bool wireframeMode = false;
+
+        public Window3D(string title, string group) : base(800, 800, new GraphicsMode(32, 24, 0, 8))
+        {
+            VSync = VSyncMode.On;
+            Title = $"{title} - Group {group}";
+        }
+
+        protected override void OnLoad(EventArgs e)
+        {
+            base.OnLoad(e);
+
+            GL.Enable(EnableCap.DepthTest);
+            GL.DepthFunc(DepthFunction.Less);
+
+            GL.Hint(HintTarget.PolygonSmoothHint, HintMode.Nicest);
+
+            pyramid = new Pyramid();
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+
+            GL.ClearColor(backgroundColor);
+
+            GL.Viewport(0, 0, Width, Height);
+
+            Matrix4 perspective = Matrix4.CreatePerspectiveFieldOfView(
+                MathHelper.PiOver4,
+                (float)Width / Height,
+                1.0f,
+                1024.0f
+            );
+            GL.MatrixMode(MatrixMode.Projection);
+            GL.LoadMatrix(ref perspective);
+        }
+
+        protected override void OnUpdateFrame(FrameEventArgs e)
+        {
+            base.OnUpdateFrame(e);
+
+            var currentKeyboard = Keyboard.GetState();
+            var currentMouse = Mouse.GetState();
+
+            if (currentKeyboard[Key.Escape])
+            {
+                Exit();
+            }
+
+            if (currentKeyboard[Key.B])
+            {
+                backgroundColor = GenerateRandomColor();
+                GL.ClearColor(backgroundColor);
+            }
+
+            if (currentKeyboard[Key.W])
+            {
+                pyramid.Move(Vector3.UnitY); //+OY
+                pyramid.ChangeFaceColors();
+            }
+            if (currentKeyboard[Key.S])
+            {
+                pyramid.Move(-Vector3.UnitY); //-OY
+                pyramid.ChangeFaceColors();
+            }
+            if (currentKeyboard[Key.D])
+            {
+                pyramid.Move(-Vector3.UnitZ); //-OZ
+                pyramid.ChangeFaceColors();
+            }
+            if (currentKeyboard[Key.A])
+            {
+                pyramid.Move(Vector3.UnitZ); //+OZ
+                pyramid.ChangeFaceColors();
+            }
+
+            // Toggle pyramid visibility
+            if (currentMouse[MouseButton.Right])
+            {
+                isPyramidVisible = !isPyramidVisible;
+            }
+
+            // Toggle wireframe mode
+            if (currentKeyboard[Key.F])
+            {
+                wireframeMode = !wireframeMode;
+            }
+        }
+
+        protected override void OnRenderFrame(FrameEventArgs e)
+        {
+            base.OnRenderFrame(e);
+
+            GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
+
+            Matrix4 view = Matrix4.LookAt(
+                new Vector3(0, 0, 10),
+                Vector3.Zero,
+                Vector3.UnitY
+            );
+            GL.MatrixMode(MatrixMode.Modelview);
+            GL.LoadMatrix(ref view);
+
+            if (isPyramidVisible)
+            {
+                pyramid.Draw(wireframeMode);
+            }
+
+            SwapBuffers();
+        }
+
+        private Color GenerateRandomColor()
+        {
+            var random = new Random();
+            return Color.FromArgb(
+                random.Next(0, 256),
+                random.Next(0, 256),
+                random.Next(0, 256)
+            );
+        }
+    }
+
+    internal class Pyramid
+    {
+        private Transform transform;
+        private List<Vector3> vertices;
+        private List<Color> faceColors;
+
+        public Pyramid()
+        {
+            transform = new Transform();
+
+            vertices = new List<Vector3> {
+                new Vector3(0, 1, 0), // Apex
+                new Vector3(-1, -1, 1), // Front-left
+                new Vector3(1, -1, 1),  // Front-right
+                new Vector3(1, -1, -1), // Back-right
+                new Vector3(-1, -1, -1) // Back-left
+            };
+
+            faceColors = new List<Color> {
+                Color.Red,
+                Color.Green,
+                Color.Blue,
+                Color.Yellow
+            };
+        }
+
+        public void Move(Vector3 direction)
+        {
+            transform.Position += direction;
+        }
+
+        public void ChangeFaceColors()
+        {
+            var random = new Random();
+            for (int i = 0; i < faceColors.Count; i++)
+            {
+                faceColors[i] = Color.FromArgb(
+                    random.Next(0, 256),
+                    random.Next(0, 256),
+                    random.Next(0, 256)
+                );
+            }
+        }
+
+        public void Draw(bool wireframeMode)
+        {
+            if (wireframeMode) GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Line);
+
+            GL.PushMatrix();
+            var modelMatrix = transform.GetModelMatrix();
+            GL.MultMatrix(ref modelMatrix);
+
+            GL.Begin(PrimitiveType.Triangles);
+
+            // Front face
+            GL.Color3(faceColors[0]);
+            GL.Vertex3(vertices[0]);
+            GL.Vertex3(vertices[1]);
+            GL.Vertex3(vertices[2]);
+
+            // Right face
+            GL.Color3(faceColors[1]);
+            GL.Vertex3(vertices[0]);
+            GL.Vertex3(vertices[2]);
+            GL.Vertex3(vertices[3]);
+
+            // Back face
+            GL.Color3(faceColors[2]);
+            GL.Vertex3(vertices[0]);
+            GL.Vertex3(vertices[3]);
+            GL.Vertex3(vertices[4]);
+
+            // Left face
+            GL.Color3(faceColors[3]);
+            GL.Vertex3(vertices[0]);
+            GL.Vertex3(vertices[4]);
+            GL.Vertex3(vertices[1]);
+
+            GL.End();
+
+            GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Fill);
+            GL.PopMatrix();
+        }
+    }
+
+    internal class Transform
+    {
+        public Vector3 Position { get; set; } = Vector3.Zero;
+
+        public Matrix4 GetModelMatrix()
+        {
+            return Matrix4.CreateTranslation(Position);
+        }
+    }
+}
